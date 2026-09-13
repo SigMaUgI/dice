@@ -286,7 +286,14 @@ playerGui.DescendantAdded:Connect(function(object) task.defer(inspect, object) e
 
 local rng = Random.new()
 local function previewColor()
-    return OPTIONS[rng:NextInteger(1, #OPTIONS)].color
+    local remembered = optionByKey[memory.Key or ""]
+    local pool = {}
+    for _, option in ipairs(OPTIONS) do
+        if not remembered or option.key ~= remembered.key then
+            table.insert(pool, option)
+        end
+    end
+    return pool[rng:NextInteger(1, #pool)].color
 end
 
 local function pickColor()
@@ -320,17 +327,7 @@ local function animateRoll()
             results[index] = otherColors[rng:NextInteger(1, #otherColors)]
         end
 
-        -- Player 2's remembered color appears exactly once, every time.
-        local rememberedCount = 1
-
-        local positions = {1, 2, 3}
-        for index = #positions, 2, -1 do
-            local swapWith = rng:NextInteger(1, index)
-            positions[index], positions[swapWith] = positions[swapWith], positions[index]
-        end
-        for index = 1, rememberedCount do
-            results[positions[index]] = remembered.color
-        end
+        -- The Trade Chat color is blocked: none of the final dice may use it.
     else
         results = {pickColor(), pickColor(), pickColor()}
     end
