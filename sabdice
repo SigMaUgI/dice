@@ -1,0 +1,485 @@
+-- Trade color memory + three-color spinner
+
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local CoreGui = game:GetService("CoreGui")
+
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+local OPTIONS = {
+    {key = "addmore", label = "Add More", color = Color3.fromRGB(45, 156, 255)},
+    {key = "ltrade", label = "L Trade", color = Color3.fromRGB(255, 72, 82)},
+    {key = "lastoffer", label = "Last Offer", color = Color3.fromRGB(169, 92, 255)},
+    {key = "deal", label = "Deal?", color = Color3.fromRGB(255, 194, 51)},
+    {key = "fairtrade", label = "Fair Trade", color = Color3.fromRGB(64, 214, 120)},
+}
+
+local optionByKey = {}
+for _, option in ipairs(OPTIONS) do
+    optionByKey[option.key] = option
+end
+
+local function normalize(value)
+    return string.lower(tostring(value or "")):gsub("[^%w]", "")
+end
+
+-- Detection updates only this table; it never changes the menu.
+getgenv().FTXTradeMemory = getgenv().FTXTradeMemory or {}
+local memory = getgenv().FTXTradeMemory
+memory.Name, memory.Key, memory.Color, memory.SeenAt, memory.Source = nil, nil, nil, nil, nil
+
+pcall(function()
+    local old = CoreGui:FindFirstChild("TradeColorSpinner")
+    if old then old:Destroy() end
+end)
+local oldPlayerGui = playerGui:FindFirstChild("TradeColorSpinner")
+if oldPlayerGui then oldPlayerGui:Destroy() end
+
+local gui = Instance.new("ScreenGui")
+gui.Name = "TradeColorSpinner"
+gui.ResetOnSpawn = false
+gui.IgnoreGuiInset = true
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+pcall(function() gui.Parent = CoreGui end)
+if not gui.Parent then gui.Parent = playerGui end
+
+local shadow = Instance.new("Frame")
+shadow.AnchorPoint = Vector2.new(0.5, 0)
+shadow.Position = UDim2.new(0.5, 5, 0, 86)
+shadow.Size = UDim2.fromOffset(600, 128)
+shadow.BackgroundColor3 = Color3.new(0, 0, 0)
+shadow.BackgroundTransparency = 0.55
+shadow.BorderSizePixel = 0
+shadow.Parent = gui
+Instance.new("UICorner", shadow).CornerRadius = UDim.new(0, 18)
+
+local main = Instance.new("Frame")
+main.AnchorPoint = Vector2.new(0.5, 0)
+main.Position = UDim2.new(0.5, 0, 0, 80)
+main.Size = UDim2.fromOffset(600, 128)
+main.BackgroundColor3 = Color3.fromRGB(14, 17, 23)
+main.BorderSizePixel = 0
+main.Active = true
+main.Parent = gui
+Instance.new("UICorner", main).CornerRadius = UDim.new(0, 18)
+
+local outline = Instance.new("UIStroke")
+outline.Color = Color3.fromRGB(73, 82, 104)
+outline.Transparency = 0.35
+outline.Thickness = 1.5
+outline.Parent = main
+
+local top = Instance.new("Frame")
+top.BackgroundTransparency = 1
+top.Position = UDim2.fromOffset(12, 10)
+top.Size = UDim2.new(1, -24, 0, 42)
+top.Parent = main
+
+local topLayout = Instance.new("UIListLayout")
+topLayout.FillDirection = Enum.FillDirection.Horizontal
+topLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+topLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+topLayout.Padding = UDim.new(0, 7)
+topLayout.Parent = top
+
+for _, option in ipairs(OPTIONS) do
+    local button = Instance.new("TextButton")
+    button.Name = option.label
+    button.Size = UDim2.fromOffset(108, 38)
+    button.AutoButtonColor = false
+    button.BackgroundColor3 = option.color
+    button.BackgroundTransparency = 0.06
+    button.BorderSizePixel = 0
+    button.Font = Enum.Font.GothamBold
+    button.Text = option.label
+    button.TextColor3 = Color3.new(1, 1, 1)
+    button.TextSize = 12
+    button.Parent = top
+    Instance.new("UICorner", button).CornerRadius = UDim.new(0, 11)
+end
+
+local divider = Instance.new("Frame")
+divider.Position = UDim2.fromOffset(16, 59)
+divider.Size = UDim2.new(1, -32, 0, 1)
+divider.BackgroundColor3 = Color3.fromRGB(61, 68, 84)
+divider.BackgroundTransparency = 0.35
+divider.BorderSizePixel = 0
+divider.Parent = main
+
+local diceHolder = Instance.new("Frame")
+diceHolder.BackgroundTransparency = 1
+diceHolder.Position = UDim2.fromOffset(16, 70)
+diceHolder.Size = UDim2.fromOffset(210, 46)
+diceHolder.Parent = main
+
+local diceLayout = Instance.new("UIListLayout")
+diceLayout.FillDirection = Enum.FillDirection.Horizontal
+diceLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+diceLayout.Padding = UDim.new(0, 10)
+diceLayout.Parent = diceHolder
+
+local dice = {}
+local diceGradients = {}
+for index = 1, 3 do
+    local die = Instance.new("Frame")
+    die.Name = "Dice" .. index
+    die.Size = UDim2.fromOffset(46, 46)
+    die.BackgroundColor3 = Color3.fromRGB(38, 43, 55)
+    die.BorderSizePixel = 0
+    die.Parent = diceHolder
+    Instance.new("UICorner", die).CornerRadius = UDim.new(0, 12)
+    local dieStroke = Instance.new("UIStroke")
+    dieStroke.Color = Color3.fromRGB(95, 104, 126)
+    dieStroke.Transparency = 0.35
+    dieStroke.Thickness = 1.5
+    dieStroke.Parent = die
+
+    local shine = Instance.new("UIGradient")
+    shine.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(125, 132, 148)),
+        ColorSequenceKeypoint.new(0.42, Color3.fromRGB(255, 255, 255)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(70, 76, 91))
+    })
+    shine.Transparency = NumberSequence.new({
+        NumberSequenceKeypoint.new(0, 0.62),
+        NumberSequenceKeypoint.new(0.45, 0.88),
+        NumberSequenceKeypoint.new(1, 0.55)
+    })
+    shine.Rotation = 25
+    shine.Parent = die
+
+    local dotPositions = {
+        UDim2.fromScale(0.25, 0.25),
+        UDim2.fromScale(0.75, 0.25),
+        UDim2.fromScale(0.50, 0.50),
+        UDim2.fromScale(0.25, 0.75),
+        UDim2.fromScale(0.75, 0.75),
+    }
+    for _, position in ipairs(dotPositions) do
+        local dot = Instance.new("Frame")
+        dot.AnchorPoint = Vector2.new(0.5, 0.5)
+        dot.Position = position
+        dot.Size = UDim2.fromOffset(7, 7)
+        dot.BackgroundColor3 = Color3.fromRGB(22, 24, 30)
+        dot.BackgroundTransparency = 0.12
+        dot.BorderSizePixel = 0
+        dot.ZIndex = die.ZIndex + 2
+        dot.Parent = die
+        Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
+    end
+
+    dice[index] = die
+    diceGradients[index] = shine
+end
+
+local amountBox = Instance.new("TextBox")
+amountBox.Position = UDim2.fromOffset(376, 74)
+amountBox.Size = UDim2.fromOffset(82, 40)
+amountBox.BackgroundColor3 = Color3.fromRGB(28, 33, 43)
+amountBox.BorderSizePixel = 0
+amountBox.ClearTextOnFocus = false
+amountBox.Font = Enum.Font.GothamBold
+amountBox.PlaceholderText = "Amount"
+amountBox.PlaceholderColor3 = Color3.fromRGB(125, 133, 151)
+amountBox.Text = "1"
+amountBox.TextColor3 = Color3.new(1, 1, 1)
+amountBox.TextSize = 14
+amountBox.Parent = main
+Instance.new("UICorner", amountBox).CornerRadius = UDim.new(0, 11)
+
+local spin = Instance.new("TextButton")
+spin.Position = UDim2.fromOffset(468, 74)
+spin.Size = UDim2.fromOffset(116, 40)
+spin.AutoButtonColor = false
+spin.BackgroundColor3 = Color3.fromRGB(43, 196, 92)
+spin.BorderSizePixel = 0
+spin.Font = Enum.Font.GothamBold
+spin.Text = "SPIN"
+spin.TextColor3 = Color3.new(1, 1, 1)
+spin.TextSize = 15
+spin.Parent = main
+Instance.new("UICorner", spin).CornerRadius = UDim.new(0, 11)
+
+local playerOne = Instance.new("TextLabel")
+playerOne.BackgroundTransparency = 1
+playerOne.Position = UDim2.fromOffset(4, 134)
+playerOne.Size = UDim2.fromOffset(230, 30)
+playerOne.Font = Enum.Font.GothamBlack
+playerOne.Text = "ME: PLAYER 1"
+playerOne.TextColor3 = Color3.fromRGB(236, 239, 247)
+playerOne.TextSize = 21
+playerOne.TextStrokeColor3 = Color3.new(0, 0, 0)
+playerOne.TextStrokeTransparency = 0
+playerOne.TextXAlignment = Enum.TextXAlignment.Left
+playerOne.Parent = main
+
+local playerTwo = Instance.new("TextLabel")
+playerTwo.BackgroundTransparency = 1
+playerTwo.Position = UDim2.new(1, -234, 0, 134)
+playerTwo.Size = UDim2.fromOffset(230, 30)
+playerTwo.Font = Enum.Font.GothamBlack
+playerTwo.Text = "YOU: PLAYER 2"
+playerTwo.TextColor3 = Color3.fromRGB(236, 239, 247)
+playerTwo.TextSize = 21
+playerTwo.TextStrokeColor3 = Color3.new(0, 0, 0)
+playerTwo.TextStrokeTransparency = 0
+playerTwo.TextXAlignment = Enum.TextXAlignment.Right
+playerTwo.Parent = main
+
+local winner = Instance.new("TextLabel")
+winner.AnchorPoint = Vector2.new(0.5, 0)
+winner.BackgroundColor3 = Color3.fromRGB(20, 24, 32)
+winner.BackgroundTransparency = 0.1
+winner.Position = UDim2.new(0.5, 0, 0, 160)
+winner.Size = UDim2.fromOffset(260, 34)
+winner.Font = Enum.Font.GothamBlack
+winner.Text = "SPIN TO PLAY"
+winner.TextColor3 = Color3.fromRGB(154, 163, 184)
+winner.TextSize = 16
+winner.Parent = main
+Instance.new("UICorner", winner).CornerRadius = UDim.new(0, 11)
+
+local winnerStroke = Instance.new("UIStroke")
+winnerStroke.Color = Color3.fromRGB(75, 84, 104)
+winnerStroke.Transparency = 0.4
+winnerStroke.Parent = winner
+
+local function remember(option, source)
+    if source and source:IsDescendantOf(gui) then return end
+    memory.Name = option.label
+    memory.Key = option.key
+    memory.Color = option.color
+    memory.SeenAt = os.clock()
+    memory.Source = source
+end
+
+local function inspect(object)
+    -- Trade presets are clickable controls; real chat entries are TextLabels.
+    -- Reject any label nested inside a button so the five fixed preset buttons
+    -- can never overwrite the color remembered from the actual chat message.
+    if not object:IsA("TextLabel") then return end
+
+    local ancestor = object.Parent
+    while ancestor and ancestor ~= playerGui do
+        if ancestor:IsA("TextButton") or ancestor:IsA("ImageButton") then
+            return
+        end
+        ancestor = ancestor.Parent
+    end
+
+    local function check()
+        if object:IsDescendantOf(gui) then return end
+        local option = optionByKey[normalize(object.Text)]
+        if option and object.Visible and object.AbsoluteSize.X > 0 and object.AbsoluteSize.Y > 0 then
+            remember(option, object)
+        end
+    end
+    check()
+    object:GetPropertyChangedSignal("Text"):Connect(check)
+    object:GetPropertyChangedSignal("Visible"):Connect(check)
+end
+
+for _, object in ipairs(playerGui:GetDescendants()) do inspect(object) end
+playerGui.DescendantAdded:Connect(function(object) task.defer(inspect, object) end)
+
+local rng = Random.new()
+local function previewColor()
+    return OPTIONS[rng:NextInteger(1, #OPTIONS)].color
+end
+
+local function pickColor()
+    local remembered = optionByKey[memory.Key or ""]
+    if remembered and rng:NextNumber() < 0.05 then
+        return remembered.color
+    end
+    local pool = {}
+    for _, option in ipairs(OPTIONS) do
+        if not remembered or option.key ~= remembered.key then
+            table.insert(pool, option)
+        end
+    end
+    return pool[rng:NextInteger(1, #pool)].color
+end
+
+local function animateRoll()
+    local remembered = optionByKey[memory.Key or ""]
+    local results = {}
+
+    if remembered then
+        local otherColors = {}
+        for _, option in ipairs(OPTIONS) do
+            if option.key ~= remembered.key then
+                table.insert(otherColors, option.color)
+            end
+        end
+
+        -- Start with three colors that are not Player 2's color.
+        for index = 1, 3 do
+            results[index] = otherColors[rng:NextInteger(1, #otherColors)]
+        end
+
+        -- Player 2's remembered color appears exactly once, every time.
+        local rememberedCount = 1
+
+        local positions = {1, 2, 3}
+        for index = #positions, 2, -1 do
+            local swapWith = rng:NextInteger(1, index)
+            positions[index], positions[swapWith] = positions[swapWith], positions[index]
+        end
+        for index = 1, rememberedCount do
+            results[positions[index]] = remembered.color
+        end
+    else
+        results = {pickColor(), pickColor(), pickColor()}
+    end
+
+    local frames = 15
+
+    for frame = 1, frames do
+        local progress = frame / frames
+        local pause = 0.025 + (progress * progress * 0.055)
+
+        for index = 1, 3 do
+            local direction = index == 2 and -1 or 1
+            local phase = frame + index * 2
+            dice[index].BackgroundColor3 = previewColor()
+            dice[index].Rotation = direction * (phase * 37 % 180 - 90)
+            diceGradients[index].Rotation = (phase * 49 * direction) % 360
+            diceGradients[index].Offset = Vector2.new(math.sin(phase) * 0.45, 0)
+        end
+
+        task.wait(pause)
+    end
+
+    for index = 1, 3 do
+        dice[index].BackgroundColor3 = results[index]
+        dice[index].Rotation = (index == 2 and -14 or 14)
+        diceGradients[index].Offset = Vector2.new(-0.15, 0)
+
+        TweenService:Create(dice[index], TweenInfo.new(0.28, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+            Rotation = 0
+        }):Play()
+        TweenService:Create(diceGradients[index], TweenInfo.new(0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+            Rotation = 25,
+            Offset = Vector2.new(0, 0)
+        }):Play()
+    end
+
+    task.wait(0.3)
+    return results
+end
+
+local function getRoundWinner(results)
+    local remembered = optionByKey[memory.Key or ""]
+    if not remembered then
+        return nil
+    end
+
+    local matches = 0
+    for _, resultColor in ipairs(results) do
+        if resultColor == remembered.color then
+            matches += 1
+        end
+    end
+
+    -- Player 2 needs the remembered Trade Chat color at least twice.
+    if matches >= 2 then
+        return 2
+    else
+        return 1
+    end
+end
+
+local function showFinalWinner(playerOneWins, playerTwoWins)
+    if playerOneWins > playerTwoWins then
+        winner.Text = "PLAYER 1 WON"
+        winner.TextColor3 = Color3.fromRGB(45, 156, 255)
+        winnerStroke.Color = Color3.fromRGB(45, 156, 255)
+    elseif playerTwoWins > playerOneWins then
+        winner.Text = "PLAYER 2 WON"
+        winner.TextColor3 = Color3.fromRGB(64, 214, 120)
+        winnerStroke.Color = Color3.fromRGB(64, 214, 120)
+    else
+        winner.Text = "DRAW"
+        winner.TextColor3 = Color3.fromRGB(255, 194, 51)
+        winnerStroke.Color = Color3.fromRGB(255, 194, 51)
+    end
+end
+
+local spinning = false
+spin.MouseButton1Click:Connect(function()
+    if spinning then return end
+    local spinCount = math.clamp(math.floor(tonumber(amountBox.Text) or 1), 1, 100)
+    amountBox.Text = tostring(spinCount)
+    spinning = true
+    spin.Text = "SPINNING"
+    spin.BackgroundColor3 = Color3.fromRGB(35, 142, 72)
+    local playerOneWins = 0
+    local playerTwoWins = 0
+
+    winner.Text = "ROLLING..."
+    winner.TextColor3 = Color3.fromRGB(154, 163, 184)
+    winnerStroke.Color = Color3.fromRGB(75, 84, 104)
+
+    for roll = 1, spinCount do
+        local results = animateRoll()
+        local roundWinner = getRoundWinner(results)
+        if roundWinner == 1 then
+            playerOneWins += 1
+        elseif roundWinner == 2 then
+            playerTwoWins += 1
+        end
+        if roll < spinCount then task.wait(1) end
+    end
+
+    if not optionByKey[memory.Key or ""] then
+        winner.Text = "WAITING FOR TRADE COLOR"
+        winner.TextColor3 = Color3.fromRGB(255, 194, 51)
+        winnerStroke.Color = Color3.fromRGB(255, 194, 51)
+    else
+        showFinalWinner(playerOneWins, playerTwoWins)
+    end
+
+    spinning = false
+    spin.Text = "SPIN"
+    spin.BackgroundColor3 = Color3.fromRGB(43, 196, 92)
+end)
+
+local dragging, dragInput, dragStart, startPosition = false, nil, nil, nil
+main.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging, dragStart, startPosition = true, input.Position, main.Position
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then dragging = false end
+        end)
+    end
+end)
+main.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+        dragInput = input
+    end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if dragging and input == dragInput then
+        local delta = input.Position - dragStart
+        local target = UDim2.new(startPosition.X.Scale, startPosition.X.Offset + delta.X, startPosition.Y.Scale, startPosition.Y.Offset + delta.Y)
+        main.Position = target
+        shadow.Position = UDim2.new(target.X.Scale, target.X.Offset + 5, target.Y.Scale, target.Y.Offset + 6)
+    end
+end)
+
+-- Only opening the menu is animated. Remembering trade data is completely silent.
+main.Size = UDim2.fromOffset(560, 118)
+main.BackgroundTransparency = 1
+shadow.Size = UDim2.fromOffset(560, 118)
+shadow.BackgroundTransparency = 1
+TweenService:Create(main, TweenInfo.new(0.35, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+    Size = UDim2.fromOffset(600, 128), BackgroundTransparency = 0
+}):Play()
+TweenService:Create(shadow, TweenInfo.new(0.35, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+    Size = UDim2.fromOffset(600, 128), BackgroundTransparency = 0.55
+}):Play()
+
+print("Trade color spinner loaded")
