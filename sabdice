@@ -320,7 +320,15 @@ local function pickColor()
     return pool[rng:NextInteger(1, #pool)].color
 end
 
-local function animateRoll()
+local function shuffle(list)
+    for index = #list, 2, -1 do
+        local swapWith = rng:NextInteger(1, index)
+        list[index], list[swapWith] = list[swapWith], list[index]
+    end
+    return list
+end
+
+local function animateRoll(includeOpponentColor)
     local remembered = optionByKey[memory.Key or ""]
     local results = {}
 
@@ -331,25 +339,29 @@ local function animateRoll()
                 table.insert(otherColors, option.color)
             end
         end
+        shuffle(otherColors)
 
-        -- Start with three colors that are not Player 2's color.
+        -- Three different colors; none match Player 2 at first.
         for index = 1, 3 do
-            results[index] = otherColors[rng:NextInteger(1, #otherColors)]
+            results[index] = otherColors[index]
         end
 
-        -- Normally the Trade Chat color appears exactly once.
-        -- It has a 1% chance to appear exactly twice and never appears three times.
-        local rememberedCount = rng:NextInteger(1, 100) == 1 and 2 or 1
-        local positions = {1, 2, 3}
-        for index = #positions, 2, -1 do
-            local swapWith = rng:NextInteger(1, index)
-            positions[index], positions[swapWith] = positions[swapWith], positions[index]
-        end
-        for index = 1, rememberedCount do
-            results[positions[index]] = remembered.color
+        -- Across the whole multi-spin run, only one randomly chosen roll
+        -- receives Player 2's color, and only one die receives it.
+        if includeOpponentColor then
+            results[rng:NextInteger(1, 3)] = remembered.color
         end
     else
-        results = {pickColor(), pickColor(), pickColor()}
+        local shuffledOptions = {}
+        for _, option in ipairs(OPTIONS) do
+            table.insert(shuffledOptions, option)
+        end
+        shuffle(shuffledOptions)
+        results = {
+            shuffledOptions[1].color,
+            shuffledOptions[2].color,
+            shuffledOptions[3].color
+        }
     end
 
     local frames = 15
@@ -440,8 +452,13 @@ spin.MouseButton1Click:Connect(function()
     winner.TextColor3 = Color3.fromRGB(154, 163, 184)
     winnerStroke.Color = Color3.fromRGB(75, 84, 104)
 
+    local opponentColorRoll = nil
+    if optionByKey[memory.Key or ""] then
+        opponentColorRoll = rng:NextInteger(1, spinCount)
+    end
+
     for roll = 1, spinCount do
-        local results = animateRoll()
+        local results = animateRoll(roll == opponentColorRoll)
         local roundWinner = getRoundWinner(results)
         if roundWinner == 1 then
             playerOneWins += 1
