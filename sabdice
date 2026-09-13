@@ -327,7 +327,17 @@ local function animateRoll()
             results[index] = otherColors[rng:NextInteger(1, #otherColors)]
         end
 
-        -- The Trade Chat color is blocked: none of the final dice may use it.
+        -- Normally the Trade Chat color appears exactly once.
+        -- It has a 1% chance to appear exactly twice and never appears three times.
+        local rememberedCount = rng:NextInteger(1, 100) == 1 and 2 or 1
+        local positions = {1, 2, 3}
+        for index = #positions, 2, -1 do
+            local swapWith = rng:NextInteger(1, index)
+            positions[index], positions[swapWith] = positions[swapWith], positions[index]
+        end
+        for index = 1, rememberedCount do
+            results[positions[index]] = remembered.color
+        end
     else
         results = {pickColor(), pickColor(), pickColor()}
     end
