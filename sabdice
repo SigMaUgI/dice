@@ -255,34 +255,44 @@ local function remember(option, source)
     memory.Source = source
 end
 
-local function inspect(object)
-    -- Trade presets are clickable controls; real chat entries are TextLabels.
-    -- Reject any label nested inside a button so the five fixed preset buttons
-    -- can never overwrite the color remembered from the actual chat message.
-    if not object:IsA("TextLabel") then return end
-
-    local ancestor = object.Parent
+local function isInsideClickable(object)
+    local ancestor = object
     while ancestor and ancestor ~= playerGui do
         if ancestor:IsA("TextButton") or ancestor:IsA("ImageButton") then
-            return
+            return true
         end
         ancestor = ancestor.Parent
     end
+    return false
+end
 
-    local function check()
+local function inspect(object, isNew)
+    if not (object:IsA("TextLabel") or object:IsA("TextButton")) then return end
+
+    local function check(allowClickable)
         if object:IsDescendantOf(gui) then return end
+        if isInsideClickable(object) and not allowClickable then return end
         local option = optionByKey[normalize(object.Text)]
         if option and object.Visible and object.AbsoluteSize.X > 0 and object.AbsoluteSize.Y > 0 then
             remember(option, object)
         end
     end
-    check()
-    object:GetPropertyChangedSignal("Text"):Connect(check)
-    object:GetPropertyChangedSignal("Visible"):Connect(check)
+
+    -- Existing clickable preset controls are ignored. Newly created chat rows,
+    -- or an existing chat row whose text changes, are accepted.
+    check(isNew)
+    object:GetPropertyChangedSignal("Text"):Connect(function()
+        check(true)
+    end)
+    object:GetPropertyChangedSignal("Visible"):Connect(function()
+        check(false)
+    end)
 end
 
-for _, object in ipairs(playerGui:GetDescendants()) do inspect(object) end
-playerGui.DescendantAdded:Connect(function(object) task.defer(inspect, object) end)
+for _, object in ipairs(playerGui:GetDescendants()) do inspect(object, false) end
+playerGui.DescendantAdded:Connect(function(object)
+    task.defer(inspect, object, true)
+end)
 
 local rng = Random.new()
 local function previewColor()
